@@ -47,6 +47,14 @@ const processPdfWithGemini = async (pdfBuffer) => {
     }
 };
 
+// Generate quiz in markdown from summary
+const generateQuizMarkdown = async (summary) => {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+    const prompt = `Given the following summary, create up to 7 relevant quiz questions in markdown format. Use bullet points or numbered lists for questions. Only output the markdown quiz.\n\nSummary:\n${summary}`;
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+};
+
 // PDF upload endpoint
 app.post("/api/summarize-pdf",
     multer({
@@ -69,7 +77,35 @@ app.post("/api/summarize-pdf",
             }
 
             const summary = await processPdfWithGemini(req.file.buffer);
-            res.json({ summary });
+            const quiz = await generateQuizMarkdown(summary);
+            res.json({ summary, quiz });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+);
+
+// Quiz PDF upload endpoint
+app.post(
+    "/api/quiz-pdf",
+    multer({
+        storage: multer.memoryStorage(),
+        fileFilter: (req, file, cb) =>
+            file.mimetype === "application/pdf"
+                ? cb(null, true)
+                : cb(new Error("Only PDF files are allowed")),
+    }).single("pdf"),
+    async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({
+                    error: "No PDF file uploaded",
+                    hint: "Send the PDF file with field name 'pdf' in form-data",
+                });
+            }
+            const summary = await processPdfWithGemini(req.file.buffer);
+            const quizMarkdown = await generateQuizMarkdown(summary);
+            res.json({ quiz: quizMarkdown });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
